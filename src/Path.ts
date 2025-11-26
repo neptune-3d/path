@@ -7,6 +7,25 @@ import type {
   Rect,
 } from "./types";
 
+/**
+ * A lightweight, zero‑dependency utility for constructing and manipulating
+ * SVG path data programmatically.
+ *
+ * The `Path` class maintains an ordered list of drawing commands
+ * (`M`, `L`, `C`, `Q`, `H`, `V`, `S`, `T`, `Z`) along with an optional
+ * design‑space width and height. It provides a fluent, chainable API for
+ * building complex vector shapes without manually concatenating SVG `d`
+ * strings.
+ *
+ * This abstraction is intentionally minimal: it does not attempt to parse
+ * existing path data, normalize curves, or perform geometric operations.
+ * Instead, it focuses on being a predictable, composable builder for
+ * generating valid SVG path syntax from explicit command objects.
+ *
+ * The resulting command list can be serialized via `toPathData()`, making
+ * the class suitable for icon generation, procedural geometry, or any
+ * workflow where SVG path strings need to be produced dynamically.
+ */
 export class Path {
   constructor(width = 24, height = width, commands: PathCommand[] = []) {
     this._width = width;
