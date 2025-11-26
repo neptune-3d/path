@@ -1299,6 +1299,184 @@ export class Path {
   }
 
   /**
+   * Split the given command list ( by default the current commands ) into subpaths.
+   *
+   * Each subpath starts with an `M` and ends with a `Z`. If a new `M`
+   * appears before a `Z`, the previous subpath is implicitly closed.
+   *
+   * This does not mutate `this._commands`; it just returns the split
+   * subpaths for inspection or further processing.
+   *
+   * @returns Array of subpath command arrays
+   */
+  splitSubpaths<T extends PathCommand[]>(
+    commands: T = this._commands as T
+  ): T[] {
+    const parts: PathCommand[][] = [];
+    let current: PathCommand[] = [];
+
+    for (const c of commands) {
+      if (
+        c.type === "M" &&
+        current.length > 0 &&
+        current[current.length - 1]?.type !== "Z"
+      ) {
+        parts.push(current);
+        current = [];
+      }
+
+      current.push(c);
+
+      if (c.type === "Z") {
+        parts.push(current);
+        current = [];
+      }
+    }
+
+    if (current.length) parts.push(current);
+    return parts as T[];
+  }
+
+  /**
+   * Reverse the drawing direction of a subpath.
+   *
+   * Walks backwards through the commands, reconstructing reversed equivalents.
+   * - L/H/V become L segments with swapped endpoints
+   * - Q keeps its control point but swaps endpoints
+   * - C swaps its control points and endpoint
+   * - M/Z are handled implicitly
+   *
+   * @param sub A subpath command array (from splitSubpaths)
+   * @returns   A new command array with reversed direction
+   */
+  reverseSubpath<T extends PathCommand[]>(sub: T): T {
+    const out: PathCommand[] = [];
+
+    // Precompute absolute endpoints for each command in authoring space
+    const endpoints: (Point | null)[] = new Array(sub.length).fill(null);
+    const verts: Point[] = [];
+    let cx = 0,
+      cy = 0;
+
+    for (let i = 0; i < sub.length; i++) {
+      const c = sub[i];
+      if (!c) continue;
+      switch (c.type) {
+        case "M":
+          cx = c.x;
+          cy = c.y;
+          endpoints[i] = { x: cx, y: cy };
+          verts.push({ x: cx, y: cy });
+          break;
+        case "L":
+          cx = c.x;
+          cy = c.y;
+          endpoints[i] = { x: cx, y: cy };
+          verts.push({ x: cx, y: cy });
+          break;
+        case "H":
+          cx = c.x;
+          endpoints[i] = { x: cx, y: cy };
+          verts.push({ x: cx, y: cy });
+          break;
+        case "V":
+          cy = c.y;
+          endpoints[i] = { x: cx, y: cy };
+          verts.push({ x: cx, y: cy });
+          break;
+        case "Q":
+          cx = c.x;
+          cy = c.y;
+          endpoints[i] = { x: cx, y: cy };
+          verts.push({ x: cx, y: cy });
+          break;
+        case "C":
+          cx = c.x;
+          cy = c.y;
+          endpoints[i] = { x: cx, y: cy };
+          verts.push({ x: cx, y: cy });
+          break;
+        case "Z":
+          endpoints[i] = null; // no endpoint added by Z
+          break;
+      }
+    }
+
+    if (verts.length === 0) return sub.slice() as T;
+
+    // Start at last vertex
+    const last = verts[verts.length - 1]!;
+    out.push({ type: "M", x: last.x, y: last.y });
+
+    // Helper: find previous endpoint from endpoints[]
+    function prevEndpoint(i: number): Point {
+      for (let j = i - 1; j >= 0; j--) {
+        const ep = endpoints[j];
+        if (ep) return ep;
+      }
+      // Fallback to first vertex (guaranteed by verts.length > 0)
+      const first = verts[0]!;
+      return { x: first.x, y: first.y };
+    }
+
+    // Walk backwards over commands, reconstruct reversed equivalents
+    for (let i = sub.length - 1; i >= 0; i--) {
+      const c = sub[i]!;
+      const prev = prevEndpoint(i);
+
+      switch (c.type) {
+        case "L":
+          out.push({ type: "L", x: prev.x, y: prev.y });
+          break;
+
+        case "H":
+          // In reverse, convert to explicit L using prev endpoint
+          out.push({
+            type: "L",
+            x: prev.x,
+            y: (out[out.length - 1] as any)?.y ?? prev.y,
+          });
+          break;
+
+        case "V":
+          // In reverse, convert to explicit L using prev endpoint
+          out.push({
+            type: "L",
+            x: (out[out.length - 1] as any)?.x ?? prev.x,
+            y: prev.y,
+          });
+          break;
+
+        case "Q":
+          // Reverse quadratic: endpoint becomes prev; keep control point consistent
+          out.push({ type: "Q", x1: c.x1, y1: c.y1, x: prev.x, y: prev.y });
+          break;
+
+        case "C":
+          // Reverse cubic: swap control points; endpoint becomes prev
+          out.push({
+            type: "C",
+            x1: c.x2,
+            y1: c.y2,
+            x2: c.x1,
+            y2: c.y1,
+            x: prev.x,
+            y: prev.y,
+          });
+          break;
+
+        case "M":
+        case "Z":
+          // Ignore; starting M already emitted; Z handled after loop
+          break;
+      }
+    }
+
+    if (sub.some((s) => s.type === "Z")) out.push({ type: "Z" });
+    return out as T;
+  }
+
+  /**
    * Convert all stored commands into an SVG path `d` attribute string.
    *
    * Iterates over the internal command list and serializes each one

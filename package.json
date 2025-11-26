@@ -1,6 +1,6 @@
 {
   "name": "@neptune3d/path",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Library for manipulating path data.",
   "keywords": [
     "path",
