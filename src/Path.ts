@@ -406,7 +406,7 @@ export class Path {
     sweepFlag: 0 | 1,
     x: number,
     y: number
-  ): Path {
+  ) {
     // Use helper to get current point
     const { x: x0, y: y0 } = this.getCurrentPoint();
 
@@ -442,7 +442,7 @@ export class Path {
    * @returns      The Path instance for chaining
    * @throws       Error if the string is malformed or contains invalid numbers
    */
-  as(params: string): Path {
+  as(params: string) {
     const parts = params.trim().replace(COMMA_REGEX, " ").split(SPACE_REGEX);
 
     if (parts.length !== 7) {
@@ -660,7 +660,7 @@ export class Path {
    *               and optional per-corner overrides.
    * @returns      The Path instance for chaining
    */
-  rect(config: Rect): Path {
+  rect(config: Rect) {
     const { x, y, width, height } = config;
     let rx = config.rx ?? 0;
     let ry = config.ry ?? rx;
@@ -734,7 +734,7 @@ export class Path {
     x: number,
     y: number,
     corner: Corner
-  ): Path {
+  ) {
     switch (corner.kind) {
       case "rounded":
         switch (side) {
@@ -806,7 +806,7 @@ export class Path {
     y: number,
     rx: number,
     ry: number
-  ): Path {
+  ) {
     return this.corner(side, x, y, { kind: "rounded", rx, ry });
   }
 
@@ -830,7 +830,7 @@ export class Path {
     y: number,
     rx: number,
     ry: number
-  ): Path {
+  ) {
     return this.corner(side, x, y, { kind: "chamfer", rx, ry });
   }
 
@@ -847,7 +847,7 @@ export class Path {
    * @param ry Vertical radius
    * @returns  This Path with the ellipse appended
    */
-  ellipse(cx: number, cy: number, rx: number, ry: number): Path {
+  ellipse(cx: number, cy: number, rx: number, ry: number) {
     const kappa = 0.5522847498307936;
 
     const ox = rx * kappa;
@@ -889,7 +889,7 @@ export class Path {
    * @param r  Radius of the circle
    * @returns  This Path with the circle appended
    */
-  circle(cx: number, cy: number, r: number): Path {
+  circle(cx: number, cy: number, r: number) {
     return this.ellipse(cx, cy, r, r);
   }
 
@@ -1065,7 +1065,7 @@ export class Path {
    * @param cy Optional center y (default bounding box center)
    * @returns  The Path instance for chaining
    */
-  scale(sx: number, sy: number = sx, cx?: number, cy?: number): Path {
+  scale(sx: number, sy: number = sx, cx?: number, cy?: number) {
     const center = this.getCenter();
 
     cx = cx ?? center.x;
@@ -1092,7 +1092,7 @@ export class Path {
    * @param dy Offset in Y (units depend on the current coordinate system)
    * @returns The Path instance for chaining
    */
-  translate(dx: number, dy: number): Path {
+  translate(dx: number, dy: number) {
     this._mapCoords((x, y) => ({ x: x + dx, y: y + dy }));
     return this;
   }
@@ -1105,7 +1105,7 @@ export class Path {
    * @param cy    Optional center y (default 0)
    * @returns The Path instance for chaining
    */
-  rotate(angle: number, cx: number = 0, cy: number = 0): Path {
+  rotate(angle: number, cx: number = 0, cy: number = 0) {
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
 
@@ -1131,7 +1131,7 @@ export class Path {
    * @param cy       Optional center y (default 0)
    * @returns The Path instance for chaining
    */
-  rotateDeg(angleDeg: number, cx: number = 0, cy: number = 0): Path {
+  rotateDeg(angleDeg: number, cx: number = 0, cy: number = 0) {
     const angleRad = (Math.PI / 180) * angleDeg;
     return this.rotate(angleRad, cx, cy);
   }
@@ -1146,7 +1146,7 @@ export class Path {
    *              Defaults to this.width if not provided.
    * @returns The Path instance for chaining
    */
-  flipX(width: number = this.width): Path {
+  flipX(width: number = this.width) {
     this._mapCoords((x, y) => ({ x: width - x, y }));
     return this;
   }
@@ -1161,7 +1161,7 @@ export class Path {
    *               Defaults to this.height if not provided.
    * @returns The Path instance for chaining
    */
-  flipY(height: number = this.height): Path {
+  flipY(height: number = this.height) {
     this._mapCoords((x, y) => ({ x, y: height - y }));
     return this;
   }
@@ -1172,7 +1172,7 @@ export class Path {
    * The transform function receives (x,y) and returns a new {x,y}.
    * Each command type is remapped accordingly.
    */
-  private _mapCoords(fn: (x: number, y: number) => Point): void {
+  protected _mapCoords(fn: (x: number, y: number) => Point): void {
     this._commands = this._commands.map((cmd) => {
       switch (cmd.type) {
         case "M":
@@ -1240,7 +1240,7 @@ export class Path {
     minY: number = 0,
     maxX: number = this.width,
     maxY: number = this.height
-  ): Path {
+  ) {
     const bounds = this.getBounds();
 
     const shapeWidth = bounds.maxX - bounds.minX;
@@ -1273,7 +1273,7 @@ export class Path {
     targetWidth: number = this._width,
     targetHeight: number = this._height,
     preserveAspect: boolean = true
-  ): Path {
+  ) {
     const cmdBounds = this.getBounds();
 
     const shapeWidth = cmdBounds.maxX - cmdBounds.minX;
