@@ -917,18 +917,17 @@ export class Path {
    * @param cy Optional center y (default bounding box center)
    * @returns  The Path instance for chaining
    */
-  scale(sx: number, sy: number = sx, cx?: number, cy?: number) {
+  scale(sx: number, sy: number = sx, cx?: number, cy?: number): this {
     const center = this.getCenter();
 
     cx = cx ?? center.x;
     cy = cy ?? center.y;
 
-    this._mapCoords((x, y) => {
+    return this.mapCoords((x, y) => {
       const dx = x - cx;
       const dy = y - cy;
       return { x: dx * sx + cx, y: dy * sy + cy };
     });
-    return this;
   }
 
   /**
@@ -944,9 +943,8 @@ export class Path {
    * @param dy Offset in Y (units depend on the current coordinate system)
    * @returns The Path instance for chaining
    */
-  translate(dx: number, dy: number) {
-    this._mapCoords((x, y) => ({ x: x + dx, y: y + dy }));
-    return this;
+  translate(dx: number, dy: number): this {
+    return this.mapCoords((x, y) => ({ x: x + dx, y: y + dy }));
   }
 
   /**
@@ -957,11 +955,11 @@ export class Path {
    * @param cy    Optional center y (default 0)
    * @returns The Path instance for chaining
    */
-  rotate(angle: number, cx: number = 0, cy: number = 0) {
+  rotate(angle: number, cx: number = 0, cy: number = 0): this {
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
 
-    this._mapCoords((x, y) => {
+    return this.mapCoords((x, y) => {
       // translate to origin
       const dx = x - cx;
       const dy = y - cy;
@@ -971,8 +969,6 @@ export class Path {
       // translate back
       return { x: rx + cx, y: ry + cy };
     });
-
-    return this;
   }
 
   /**
@@ -983,7 +979,7 @@ export class Path {
    * @param cy       Optional center y (default 0)
    * @returns The Path instance for chaining
    */
-  rotateDeg(angleDeg: number, cx: number = 0, cy: number = 0) {
+  rotateDeg(angleDeg: number, cx: number = 0, cy: number = 0): this {
     const angleRad = (Math.PI / 180) * angleDeg;
     return this.rotate(angleRad, cx, cy);
   }
@@ -998,9 +994,8 @@ export class Path {
    *              Defaults to this.width if not provided.
    * @returns The Path instance for chaining
    */
-  flipX(width: number = this.width) {
-    this._mapCoords((x, y) => ({ x: width - x, y }));
-    return this;
+  flipX(width: number = this.width): this {
+    return this.mapCoords((x, y) => ({ x: width - x, y }));
   }
 
   /**
@@ -1013,18 +1008,32 @@ export class Path {
    *               Defaults to this.height if not provided.
    * @returns The Path instance for chaining
    */
-  flipY(height: number = this.height) {
-    this._mapCoords((x, y) => ({ x, y: height - y }));
-    return this;
+  flipY(height: number = this.height): this {
+    return this.mapCoords((x, y) => ({ x, y: height - y }));
   }
 
   /**
-   * Apply a coordinate transform function to all commands.
+   * Apply a coordinate transform function to all commands in this path.
    *
-   * The transform function receives (x,y) and returns a new {x,y}.
-   * Each command type is remapped accordingly.
+   * - Iterates over every command in the path and remaps its coordinates
+   *   using the provided transform function.
+   * - The transform function receives `(x, y)` and must return a new `{ x, y }`
+   *   point object. Each command type is handled according to its semantics:
+   *   - `M`, `L`, `T`: remap their single endpoint.
+   *   - `H`: remap horizontal coordinate only (y ignored).
+   *   - `V`: remap vertical coordinate only (x ignored).
+   *   - `Q`: remap both control point and endpoint.
+   *   - `C`: remap both control points and endpoint.
+   *   - `S`: remap second control point and endpoint.
+   *   - `Z`: unchanged (no coordinates).
+   * - This method is the foundation for higher‑level transforms such as
+   *   `translate`, `scale`, and `rotate`, and is exposed publicly so that
+   *   `PathGroup` can apply group‑level transforms to its member paths.
+   *
+   * @param fn A function that takes `(x, y)` and returns a new `{ x, y }` point
+   * @returns  The Path instance for chaining
    */
-  protected _mapCoords(fn: (x: number, y: number) => Point): void {
+  mapCoords(fn: (x: number, y: number) => Point): this {
     this._commands = this._commands.map((cmd) => {
       switch (cmd.type) {
         case "M":
@@ -1069,6 +1078,8 @@ export class Path {
           return { type: "Z" };
       }
     });
+
+    return this;
   }
 
   /**
@@ -1092,7 +1103,7 @@ export class Path {
     minY: number = 0,
     maxX: number = this.width,
     maxY: number = this.height
-  ) {
+  ): this {
     const bounds = this.getBounds();
 
     const shapeWidth = bounds.maxX - bounds.minX;
@@ -1125,7 +1136,7 @@ export class Path {
     targetWidth: number = this._width,
     targetHeight: number = this._height,
     preserveAspect: boolean = true
-  ) {
+  ): this {
     const cmdBounds = this.getBounds();
 
     const shapeWidth = cmdBounds.maxX - cmdBounds.minX;
@@ -1145,9 +1156,7 @@ export class Path {
       sy = s;
     }
 
-    this.scale(sx, sy);
-
-    return this;
+    return this.scale(sx, sy);
   }
 
   /**
