@@ -47,13 +47,6 @@ export type PathCommand =
   | SmoothCubicCommand
   | CloseCommand;
 
-export type OpenTypeCommand =
-  | MoveCommand
-  | LineCommand
-  | QuadCommand
-  | CubicCommand
-  | CloseCommand;
-
 export type Corner =
   | { kind: "sharp" }
   | { kind: "rounded"; rx: number; ry: number }
