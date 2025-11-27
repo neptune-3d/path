@@ -2,6 +2,48 @@ import { describe, expect, test } from "vitest";
 import { Path } from "./Path";
 
 describe("Path", () => {
+  test("parse", () => {
+    let cmds = Path.parsePathData("M 2 3");
+
+    expect(cmds).toEqual([{ type: "M", x: 2, y: 3 }]);
+
+    cmds = Path.parsePathData("M 2 3L2.5 123");
+
+    expect(cmds).toEqual([
+      { type: "M", x: 2, y: 3 },
+      { type: "L", x: 2.5, y: 123 },
+    ]);
+
+    cmds = Path.parsePathData("M 2 3.4C0.2 2 2 2 3 3Z");
+
+    expect(cmds).toEqual([
+      {
+        type: "M",
+        x: 2,
+        y: 3.4,
+      },
+      {
+        type: "C",
+        x1: 0.2,
+        y1: 2,
+        x2: 2,
+        y2: 2,
+        x: 3,
+        y: 3,
+      },
+      {
+        type: "Z",
+      },
+    ]);
+
+    cmds = Path.parsePathData("M5.1 0.21A2 2.5 0 0123.54 74");
+
+    expect(cmds.length).toBe(3);
+    expect(cmds[0].type).toBe("M");
+    expect(cmds[1].type).toBe("C");
+    expect(cmds[2].type).toBe("C");
+  });
+
   test("fit", () => {
     const folderPath = new Path(24)
       .m(0, 0)

@@ -411,7 +411,7 @@ export class Path {
     const { x: x0, y: y0 } = this.getCurrentPoint();
 
     // Convert arc to cubic segments
-    const beziers: CubicCommand[] = this.arcToCubic(
+    const beziers: CubicCommand[] = Path.arcToCubic(
       x0,
       y0,
       rx,
@@ -487,163 +487,15 @@ export class Path {
   }
 
   /**
-   * Convert an SVG elliptical arc into one or more cubic Bézier segments.
+   * Parse a raw SVG path string and append its commands
+   * to this Path instance.
    *
-   * Implements the algorithm from the SVG spec:
-   * https://www.w3.org/TR/SVG/implnote.html#ArcImplementationNotes
-   *
-   * @param x0 Starting x coordinate (current point)
-   * @param y0 Starting y coordinate (current point)
-   * @param rx X radius of the ellipse
-   * @param ry Y radius of the ellipse
-   * @param xAxisRotation Rotation of the ellipse’s x-axis in degrees
-   * @param largeArcFlag 0 = smaller arc, 1 = larger arc
-   * @param sweepFlag    0 = counter-clockwise, 1 = clockwise
-   * @param x End x coordinate
-   * @param y End y coordinate
-   * @returns Array of cubic Bézier segments (CubicCommand[])
+   * @param data SVG path `d` attribute string
+   * @returns this Path instance for chaining
    */
-  arcToCubic(
-    x0: number,
-    y0: number,
-    rx: number,
-    ry: number,
-    xAxisRotation: number,
-    largeArcFlag: 0 | 1,
-    sweepFlag: 0 | 1,
-    x: number,
-    y: number
-  ): CubicCommand[] {
-    // Degenerate: same point -> nothing to draw
-    if (x0 === x && y0 === y) return [];
-
-    // Degenerate: zero radii -> straight line
-    if (rx === 0 || ry === 0) {
-      return [
-        {
-          type: "C",
-          x1: x0,
-          y1: y0,
-          x2: x,
-          y2: y,
-          x,
-          y,
-        },
-      ];
-    }
-
-    // Rotation in radians
-    const phi = (Math.PI / 180) * xAxisRotation;
-    const cosPhi = Math.cos(phi);
-    const sinPhi = Math.sin(phi);
-
-    // Step 1: transform to ellipse space
-    const dx2 = (x0 - x) / 2;
-    const dy2 = (y0 - y) / 2;
-    let x1p = cosPhi * dx2 + sinPhi * dy2;
-    let y1p = -sinPhi * dx2 + cosPhi * dy2;
-
-    // Compensate out-of-range radii
-    rx = Math.abs(rx);
-    ry = Math.abs(ry);
-    const lambda = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry);
-    if (lambda > 1) {
-      const scale = Math.sqrt(lambda);
-      rx *= scale;
-      ry *= scale;
-    }
-
-    // Step 2: center calculation in ellipse space
-    const rxSq = rx * rx;
-    const rySq = ry * ry;
-    const x1pSq = x1p * x1p;
-    const y1pSq = y1p * y1p;
-
-    let radicant = rxSq * rySq - rxSq * y1pSq - rySq * x1pSq;
-    if (radicant < 0) radicant = 0;
-
-    radicant /= rxSq * y1pSq + rySq * x1pSq;
-    radicant = Math.sqrt(radicant) * (largeArcFlag === sweepFlag ? -1 : 1);
-
-    const cxp = (radicant * rx * y1p) / ry;
-    const cyp = (radicant * -ry * x1p) / rx;
-
-    // Step 3: transform center back to original coords
-    const cx = cosPhi * cxp - sinPhi * cyp + (x0 + x) / 2;
-    const cy = sinPhi * cxp + cosPhi * cyp + (y0 + y) / 2;
-
-    // Step 4: angles
-    const unitAngle = (ux: number, uy: number, vx: number, vy: number) => {
-      const sign = ux * vy - uy * vx < 0 ? -1 : 1;
-      let dot = ux * vx + uy * vy;
-      if (dot > 1) dot = 1;
-      if (dot < -1) dot = -1;
-      return sign * Math.acos(dot);
-    };
-
-    const v1x = (x1p - cxp) / rx;
-    const v1y = (y1p - cyp) / ry;
-    const v2x = (-x1p - cxp) / rx;
-    const v2y = (-y1p - cyp) / ry;
-
-    let theta1 = unitAngle(1, 0, v1x, v1y);
-    let deltaTheta = unitAngle(v1x, v1y, v2x, v2y);
-
-    if (sweepFlag === 0 && deltaTheta > 0) deltaTheta -= Math.PI * 2;
-    if (sweepFlag === 1 && deltaTheta < 0) deltaTheta += Math.PI * 2;
-
-    // Segment splitting (<= 90° each)
-    const segments = Math.max(
-      Math.ceil(Math.abs(deltaTheta) / (Math.PI / 2)),
-      1
-    );
-    const dTheta = deltaTheta / segments;
-
-    const result: CubicCommand[] = [];
-
-    for (let i = 0; i < segments; i++) {
-      const t1 = theta1;
-      const t2 = t1 + dTheta;
-
-      const cosT1 = Math.cos(t1);
-      const sinT1 = Math.sin(t1);
-      const cosT2 = Math.cos(t2);
-      const sinT2 = Math.sin(t2);
-
-      // Position on rotated/scaled ellipse
-      const p1x = cx + rx * (cosPhi * cosT1) - ry * (sinPhi * sinT1);
-      const p1y = cy + rx * (sinPhi * cosT1) + ry * (cosPhi * sinT1);
-      const p2x = cx + rx * (cosPhi * cosT2) - ry * (sinPhi * sinT2);
-      const p2y = cy + rx * (sinPhi * cosT2) + ry * (cosPhi * sinT2);
-
-      // Derivative vectors (R * rot * [-sin t, cos t])
-      const d1x = -rx * cosPhi * sinT1 - ry * sinPhi * cosT1;
-      const d1y = -rx * sinPhi * sinT1 + ry * cosPhi * cosT1;
-      const d2x = -rx * cosPhi * sinT2 - ry * sinPhi * cosT2;
-      const d2y = -rx * sinPhi * sinT2 + ry * cosPhi * cosT2;
-
-      // Control points using alpha
-      const alpha = (4 / 3) * Math.tan((t2 - t1) / 4);
-
-      const c1x = p1x + alpha * d1x;
-      const c1y = p1y + alpha * d1y;
-      const c2x = p2x - alpha * d2x;
-      const c2y = p2y - alpha * d2y;
-
-      result.push({
-        type: "C",
-        x1: c1x,
-        y1: c1y,
-        x2: c2x,
-        y2: c2y,
-        x: p2x,
-        y: p2y,
-      });
-
-      theta1 = t2;
-    }
-
-    return result;
+  addPathData(data: string): this {
+    this._commands.push(...Path.parsePathData(data));
+    return this;
   }
 
   /**
@@ -1554,7 +1406,389 @@ export class Path {
     }
     return merged;
   }
+
+  /**
+   * Parse an SVG path data string (`d` attribute) into a normalized list of PathCommand objects.
+   *
+   * - Supports both absolute (uppercase) and relative (lowercase) commands as defined in the SVG spec.
+   * - Relative commands are converted into absolute coordinates by tracking the current point.
+   * - Elliptical arc commands (`A`/`a`) are expanded into equivalent cubic Bézier segments using arcToCubic.
+   * - Returns a flat array of typed PathCommand objects (M, L, H, V, Q, C, S, T, Z),
+   *   each with numeric coordinates ready for downstream processing.
+   *
+   * @param raw Raw SVG path string (e.g. "M10 10 l20 0 z")
+   * @returns Array of PathCommand objects with absolute coordinates
+   * @throws Error if the path string is malformed or contains unsupported commands
+   */
+  static parsePathData(raw: string): PathCommand[] {
+    let cursor = 0;
+    let tokens: string[][] = [];
+
+    while (cursor < raw.length) {
+      const match = raw.slice(cursor).match(kCommandTypeRegex);
+      if (match !== null) {
+        const command = match[1];
+        if (cursor === 0 && command.toLowerCase() !== "m") {
+          throw new Error("malformed path (first error at " + cursor + ")");
+        }
+        cursor += match[0].length;
+        const [newCursor, comps] = Path.components(command, raw, cursor);
+        cursor = newCursor;
+        tokens = [...tokens, ...comps];
+      }
+      //
+      else {
+        throw new Error("malformed path (first error at " + cursor + ")");
+      }
+    }
+
+    const commands: PathCommand[] = [];
+    let currentX = 0;
+    let currentY = 0;
+
+    for (const [type, ...args] of tokens) {
+      switch (type.toUpperCase()) {
+        case "M":
+          currentX = +args[0];
+          currentY = +args[1];
+          commands.push({ type: "M", x: currentX, y: currentY });
+          break;
+        case "L":
+          currentX = +args[0];
+          currentY = +args[1];
+          commands.push({ type: "L", x: currentX, y: currentY });
+          break;
+        case "H":
+          currentX = +args[0];
+          commands.push({ type: "H", x: currentX });
+          break;
+        case "V":
+          currentY = +args[0];
+          commands.push({ type: "V", y: currentY });
+          break;
+        case "Q":
+          currentX = +args[2];
+          currentY = +args[3];
+          commands.push({
+            type: "Q",
+            x1: +args[0],
+            y1: +args[1],
+            x: currentX,
+            y: currentY,
+          });
+          break;
+        case "C":
+          currentX = +args[4];
+          currentY = +args[5];
+          commands.push({
+            type: "C",
+            x1: +args[0],
+            y1: +args[1],
+            x2: +args[2],
+            y2: +args[3],
+            x: currentX,
+            y: currentY,
+          });
+          break;
+        case "T":
+          currentX = +args[0];
+          currentY = +args[1];
+          commands.push({ type: "T", x: currentX, y: currentY });
+          break;
+        case "S":
+          currentX = +args[2];
+          currentY = +args[3];
+          commands.push({
+            type: "S",
+            x2: +args[0],
+            y2: +args[1],
+            x: currentX,
+            y: currentY,
+          });
+          break;
+        case "Z":
+          commands.push({ type: "Z" });
+          break;
+        case "A": {
+          const rx = +args[0];
+          const ry = +args[1];
+          const xAxisRotation = +args[2];
+          const largeArcFlag = +args[3] as 0 | 1;
+          const sweepFlag = +args[4] as 0 | 1;
+          const x = +args[5];
+          const y = +args[6];
+
+          // Use arcToCubic to expand into CubicCommand[]
+          const cubicSegments = Path.arcToCubic(
+            currentX,
+            currentY,
+            rx,
+            ry,
+            xAxisRotation,
+            largeArcFlag,
+            sweepFlag,
+            x,
+            y
+          );
+
+          // Append all cubic segments
+          commands.push(...cubicSegments);
+
+          // Update current point to arc end
+          currentX = x;
+          currentY = y;
+          break;
+        }
+        default:
+          throw new Error(`Unsupported command type: ${type}`);
+      }
+    }
+
+    return commands;
+  }
+
+  protected static components(
+    type: string,
+    path: string,
+    cursor: number
+  ): [number, string[][]] {
+    const expectedRegexList = kGrammar[type.toUpperCase()];
+    const components: string[][] = [];
+
+    while (cursor <= path.length) {
+      const component: string[] = [type];
+      for (const regex of expectedRegexList) {
+        const match = path.slice(cursor).match(regex);
+        if (match !== null) {
+          component.push(match[0]);
+          cursor += match[0].length;
+          const ws = path.slice(cursor).match(kCommaWsp);
+          if (ws !== null) cursor += ws[0].length;
+        } else if (component.length === 1 && components.length >= 1) {
+          return [cursor, components];
+        } else {
+          throw new Error("malformed path (first error at " + cursor + ")");
+        }
+      }
+      components.push(component);
+      if (expectedRegexList.length === 0) return [cursor, components];
+      if (type === "m") type = "l";
+      if (type === "M") type = "L";
+    }
+    throw new Error("malformed path (first error at " + cursor + ")");
+  }
+
+  /**
+   * Convert an SVG elliptical arc into one or more cubic Bézier segments.
+   *
+   * Implements the algorithm from the SVG spec:
+   * https://www.w3.org/TR/SVG/implnote.html#ArcImplementationNotes
+   *
+   * @param x0 Starting x coordinate (current point)
+   * @param y0 Starting y coordinate (current point)
+   * @param rx X radius of the ellipse
+   * @param ry Y radius of the ellipse
+   * @param xAxisRotation Rotation of the ellipse’s x-axis in degrees
+   * @param largeArcFlag 0 = smaller arc, 1 = larger arc
+   * @param sweepFlag    0 = counter-clockwise, 1 = clockwise
+   * @param x End x coordinate
+   * @param y End y coordinate
+   * @returns Array of cubic Bézier segments (CubicCommand[])
+   */
+  static arcToCubic(
+    x0: number,
+    y0: number,
+    rx: number,
+    ry: number,
+    xAxisRotation: number,
+    largeArcFlag: 0 | 1,
+    sweepFlag: 0 | 1,
+    x: number,
+    y: number
+  ): CubicCommand[] {
+    // Degenerate: same point -> nothing to draw
+    if (x0 === x && y0 === y) return [];
+
+    // Degenerate: zero radii -> straight line
+    if (rx === 0 || ry === 0) {
+      return [
+        {
+          type: "C",
+          x1: x0,
+          y1: y0,
+          x2: x,
+          y2: y,
+          x,
+          y,
+        },
+      ];
+    }
+
+    // Rotation in radians
+    const phi = (Math.PI / 180) * xAxisRotation;
+    const cosPhi = Math.cos(phi);
+    const sinPhi = Math.sin(phi);
+
+    // Step 1: transform to ellipse space
+    const dx2 = (x0 - x) / 2;
+    const dy2 = (y0 - y) / 2;
+    let x1p = cosPhi * dx2 + sinPhi * dy2;
+    let y1p = -sinPhi * dx2 + cosPhi * dy2;
+
+    // Compensate out-of-range radii
+    rx = Math.abs(rx);
+    ry = Math.abs(ry);
+    const lambda = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry);
+    if (lambda > 1) {
+      const scale = Math.sqrt(lambda);
+      rx *= scale;
+      ry *= scale;
+    }
+
+    // Step 2: center calculation in ellipse space
+    const rxSq = rx * rx;
+    const rySq = ry * ry;
+    const x1pSq = x1p * x1p;
+    const y1pSq = y1p * y1p;
+
+    let radicant = rxSq * rySq - rxSq * y1pSq - rySq * x1pSq;
+    if (radicant < 0) radicant = 0;
+
+    radicant /= rxSq * y1pSq + rySq * x1pSq;
+    radicant = Math.sqrt(radicant) * (largeArcFlag === sweepFlag ? -1 : 1);
+
+    const cxp = (radicant * rx * y1p) / ry;
+    const cyp = (radicant * -ry * x1p) / rx;
+
+    // Step 3: transform center back to original coords
+    const cx = cosPhi * cxp - sinPhi * cyp + (x0 + x) / 2;
+    const cy = sinPhi * cxp + cosPhi * cyp + (y0 + y) / 2;
+
+    // Step 4: angles
+    const unitAngle = (ux: number, uy: number, vx: number, vy: number) => {
+      const sign = ux * vy - uy * vx < 0 ? -1 : 1;
+      let dot = ux * vx + uy * vy;
+      if (dot > 1) dot = 1;
+      if (dot < -1) dot = -1;
+      return sign * Math.acos(dot);
+    };
+
+    const v1x = (x1p - cxp) / rx;
+    const v1y = (y1p - cyp) / ry;
+    const v2x = (-x1p - cxp) / rx;
+    const v2y = (-y1p - cyp) / ry;
+
+    let theta1 = unitAngle(1, 0, v1x, v1y);
+    let deltaTheta = unitAngle(v1x, v1y, v2x, v2y);
+
+    if (sweepFlag === 0 && deltaTheta > 0) deltaTheta -= Math.PI * 2;
+    if (sweepFlag === 1 && deltaTheta < 0) deltaTheta += Math.PI * 2;
+
+    // Segment splitting (<= 90° each)
+    const segments = Math.max(
+      Math.ceil(Math.abs(deltaTheta) / (Math.PI / 2)),
+      1
+    );
+    const dTheta = deltaTheta / segments;
+
+    const result: CubicCommand[] = [];
+
+    for (let i = 0; i < segments; i++) {
+      const t1 = theta1;
+      const t2 = t1 + dTheta;
+
+      const cosT1 = Math.cos(t1);
+      const sinT1 = Math.sin(t1);
+      const cosT2 = Math.cos(t2);
+      const sinT2 = Math.sin(t2);
+
+      // Position on rotated/scaled ellipse
+      const p1x = cx + rx * (cosPhi * cosT1) - ry * (sinPhi * sinT1);
+      const p1y = cy + rx * (sinPhi * cosT1) + ry * (cosPhi * sinT1);
+      const p2x = cx + rx * (cosPhi * cosT2) - ry * (sinPhi * sinT2);
+      const p2y = cy + rx * (sinPhi * cosT2) + ry * (cosPhi * sinT2);
+
+      // Derivative vectors (R * rot * [-sin t, cos t])
+      const d1x = -rx * cosPhi * sinT1 - ry * sinPhi * cosT1;
+      const d1y = -rx * sinPhi * sinT1 + ry * cosPhi * cosT1;
+      const d2x = -rx * cosPhi * sinT2 - ry * sinPhi * cosT2;
+      const d2y = -rx * sinPhi * sinT2 + ry * cosPhi * cosT2;
+
+      // Control points using alpha
+      const alpha = (4 / 3) * Math.tan((t2 - t1) / 4);
+
+      const c1x = p1x + alpha * d1x;
+      const c1y = p1y + alpha * d1y;
+      const c2x = p2x - alpha * d2x;
+      const c2y = p2y - alpha * d2y;
+
+      result.push({
+        type: "C",
+        x1: c1x,
+        y1: c1y,
+        x2: c2x,
+        y2: c2y,
+        x: p2x,
+        y: p2y,
+      });
+
+      theta1 = t2;
+    }
+
+    return result;
+  }
+
+  /**
+   * Factory method to construct a Path from an SVG path data string.
+   *
+   * - Calls `parsePathData` to normalize the raw string into absolute PathCommand objects.
+   * - Returns a new Path instance with those commands.
+   *
+   * @param raw SVG path data string (the `d` attribute)
+   * @param width Optional width of the viewBox (default 24)
+   * @param height Optional height of the viewBox (default = width)
+   * @returns New Path instance containing parsed commands
+   */
+  public static fromPathData(raw: string, width = 24, height = width): Path {
+    const commands = Path.parsePathData(raw);
+    return new Path(width, height, commands);
+  }
 }
 
 const COMMA_REGEX = /,/g;
 const SPACE_REGEX = /\s+/;
+
+const kCommandTypeRegex = /^[\t\n\f\r ]*([MLHVZCSQTAmlhvzcsqta])[\t\n\f\r ]*/;
+const kFlagRegex = /^[01]/;
+const kNumberRegex =
+  /^[+-]?(([0-9]*\.[0-9]+)|([0-9]+\.)|([0-9]+))([eE][+-]?[0-9]+)?/;
+const kCoordinateRegex = kNumberRegex;
+const kCommaWsp = /^(([\t\n\f\r ]+,?[\t\n\f\r ]*)|(,[\t\n\f\r ]*))/;
+
+const kGrammar: { [key: string]: RegExp[] } = {
+  M: [kCoordinateRegex, kCoordinateRegex],
+  L: [kCoordinateRegex, kCoordinateRegex],
+  H: [kCoordinateRegex],
+  V: [kCoordinateRegex],
+  Z: [],
+  C: [
+    kCoordinateRegex,
+    kCoordinateRegex,
+    kCoordinateRegex,
+    kCoordinateRegex,
+    kCoordinateRegex,
+    kCoordinateRegex,
+  ],
+  S: [kCoordinateRegex, kCoordinateRegex, kCoordinateRegex, kCoordinateRegex],
+  Q: [kCoordinateRegex, kCoordinateRegex, kCoordinateRegex, kCoordinateRegex],
+  T: [kCoordinateRegex, kCoordinateRegex],
+  A: [
+    kNumberRegex,
+    kNumberRegex,
+    kCoordinateRegex,
+    kFlagRegex,
+    kFlagRegex,
+    kCoordinateRegex,
+    kCoordinateRegex,
+  ],
+};
