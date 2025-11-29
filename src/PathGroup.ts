@@ -1,5 +1,5 @@
 import type { Path } from "./Path";
-import type { PathBounds } from "./types";
+import type { PathBounds, Point, Size } from "./types";
 
 /**
  * Represents a collection of Path instances that can be transformed together
@@ -20,14 +20,40 @@ import type { PathBounds } from "./types";
  * ```
  */
 export class PathGroup {
-  constructor(paths: Path[]) {
+  /**
+   * Construct a PathGroup with an explicit design space.
+   *
+   * - Accepts an array of Path instances to manage as a group.
+   * - The `width` and `height` parameters define the design space
+   *   (e.g. icon grid or font em‑square) that group‑level operations
+   *   such as `center`, `fit`, and flips will use as defaults.
+   * - If `height` is omitted, it defaults to the same value as `width`.
+   * - Paths are stored internally and can be accessed via the `paths` getter.
+   *
+   * @param paths  Array of Path instances to group together
+   * @param width  Width of the design space (default 24)
+   * @param height Height of the design space (default = width)
+   */
+  constructor(paths: Path[], width: number = 24, height: number = width) {
     this._paths = paths;
+    this._width = width;
+    this._height = height;
   }
 
   protected _paths: Path[];
+  protected _width: number;
+  protected _height: number;
 
   get paths(): Path[] {
     return this._paths;
+  }
+
+  get width() {
+    return this._width;
+  }
+
+  get height() {
+    return this._height;
   }
 
   /**
@@ -51,6 +77,65 @@ export class PathGroup {
     const maxX = Math.max(...allBounds.map((b) => b.maxX));
     const maxY = Math.max(...allBounds.map((b) => b.maxY));
     return { minX, minY, maxX, maxY };
+  }
+
+  /**
+   * Return the geometric center of all paths in the group.
+   *
+   * - Computes the combined bounding box of all paths in the group.
+   * - Returns the midpoint of that axis-aligned bounding box,
+   *   effectively the geometric center of the group’s drawn commands.
+   *
+   * @returns { x, y } center of the group bounds
+   */
+  getCenter(): Point {
+    const bounds = this.getBounds();
+    return {
+      x: (bounds.minX + bounds.maxX) / 2,
+      y: (bounds.minY + bounds.maxY) / 2,
+    };
+  }
+
+  /**
+   * Return the overall size of the group’s drawn commands.
+   *
+   * - Computes the combined bounding box of all paths in the group.
+   * - Derives the width and height as the difference between max and min coordinates.
+   * - Useful for layout, scaling, or fitting operations.
+   *
+   * @returns { width, height } dimensions of the group bounds
+   */
+  getSize(): Size {
+    const bounds = this.getBounds();
+    const width = bounds.maxX - bounds.minX;
+    const height = bounds.maxY - bounds.minY;
+    return { width, height };
+  }
+
+  /**
+   * Return the full canvas bounds.
+   *
+   * This is the design-space rectangle the PathGroup is defined in from (0,0) to (width,height).
+   *
+   * @returns { minX, minY, maxX, maxY } for the canvas box
+   */
+  getCanvasBounds(): PathBounds {
+    return { minX: 0, minY: 0, maxX: this.width, maxY: this.height };
+  }
+
+  /**
+   * Return the geometric center of the canvas box.
+   *
+   * This is simply the midpoint of the full design-space rectangle
+   * (0,0) → (width,height).
+   *
+   * @returns { x, y } center of the canvas
+   */
+  getCanvasCenter(): Point {
+    return {
+      x: this._width / 2,
+      y: this._height / 2,
+    };
   }
 
   /**
@@ -91,9 +176,9 @@ export class PathGroup {
    * @returns  The PathGroup instance for chaining
    */
   scale(sx: number, sy: number = sx, cx?: number, cy?: number): this {
-    const bounds = this.getBounds();
-    const centerX = cx ?? bounds.minX + (bounds.maxX - bounds.minX) / 2;
-    const centerY = cy ?? bounds.minY + (bounds.maxY - bounds.minY) / 2;
+    const center = this.getCenter();
+    const centerX = cx ?? center.x;
+    const centerY = cy ?? center.y;
 
     this._paths.forEach((p) => p.scale(sx, sy, centerX, centerY));
     return this;
@@ -184,26 +269,24 @@ export class PathGroup {
    * - Computes the combined bounding box of all paths in the group.
    * - Translates every path so that the group’s shape is centered within
    *   the specified target box.
-   * - If parameters are omitted, the default box is (0,0) → (targetWidth,targetHeight),
-   *   so the group is centered inside the given canvas dimensions.
+   * - If parameters are omitted, the default box is (0,0) → (this.width,this.height),
+   *   so the group is centered inside the design space.
    * - This allows centering inside arbitrary rectangles, including offset boxes,
    *   enabling both centering and translation in one step.
    *
    * @param minX Minimum x of target box (default 0)
    * @param minY Minimum y of target box (default 0)
-   * @param maxX Maximum x of target box (default = group bounding box width)
-   * @param maxY Maximum y of target box (default = group bounding box height)
+   * @param maxX Maximum x of target box (default = this.width)
+   * @param maxY Maximum y of target box (default = this.height)
    * @returns The PathGroup instance for chaining
    */
   center(
     minX: number = 0,
     minY: number = 0,
-    maxX?: number,
-    maxY?: number
+    maxX: number = this.width,
+    maxY: number = this.height
   ): this {
     const bounds = this.getBounds();
-    maxX = maxX ?? bounds.maxX;
-    maxY = maxY ?? bounds.maxY;
 
     const shapeWidth = bounds.maxX - bounds.minX;
     const shapeHeight = bounds.maxY - bounds.minY;
@@ -228,14 +311,14 @@ export class PathGroup {
    *   together without drifting relative to each other.
    * - Returns `this` for chaining.
    *
-   * @param targetWidth    Target width to fit into
-   * @param targetHeight   Target height to fit into
+   * @param targetWidth    Target width to fit into (default = this.width)
+   * @param targetHeight   Target height to fit into (default = this.height)
    * @param preserveAspect Whether to preserve aspect ratio (default true)
    * @returns              The PathGroup instance for chaining
    */
   fit(
-    targetWidth: number,
-    targetHeight: number,
+    targetWidth: number = this.width,
+    targetHeight: number = this.height,
     preserveAspect: boolean = true
   ): this {
     const bounds = this.getBounds();
@@ -246,6 +329,7 @@ export class PathGroup {
 
     let sx = targetWidth / shapeWidth;
     let sy = targetHeight / shapeHeight;
+
     if (preserveAspect) {
       const s = Math.min(sx, sy);
       sx = s;

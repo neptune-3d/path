@@ -27,6 +27,22 @@ import type {
  * workflow where SVG path strings need to be produced dynamically.
  */
 export class Path {
+  /**
+   * Construct a Path with an explicit design space and command list.
+   *
+   * - The `width` and `height` parameters define the design space
+   *   (e.g. SVG viewBox, icon grid, or font em‑square) that path‑level
+   *   operations such as `center`, `fit`, and flips will use as defaults.
+   * - If `height` is omitted, it defaults to the same value as `width`.
+   * - The `commands` array contains the parsed drawing instructions
+   *   (absolute PathCommand objects) that describe the shape.
+   * - Paths are mutable: transforms like translate, scale, rotate, and flip
+   *   will update these commands in place.
+   *
+   * @param width    Width of the design space (default 24)
+   * @param height   Height of the design space (default = width)
+   * @param commands Optional array of PathCommand objects (default empty)
+   */
   constructor(width = 24, height = width, commands: PathCommand[] = []) {
     this._width = width;
     this._height = height;
@@ -798,6 +814,22 @@ export class Path {
   }
 
   /**
+   * Return the overall size of this path’s drawn commands.
+   *
+   * - Computes the bounding box of the path commands.
+   * - Derives the width and height as the difference between max and min coordinates.
+   * - Useful for layout, scaling, or fitting operations.
+   *
+   * @returns { width, height } dimensions of the path bounds
+   */
+  getSize(): { width: number; height: number } {
+    const bounds = this.getBounds();
+    const width = bounds.maxX - bounds.minX;
+    const height = bounds.maxY - bounds.minY;
+    return { width, height };
+  }
+
+  /**
    * Return the full canvas bounds.
    *
    * This is the design-space rectangle the path is defined in from (0,0) to (width,height).
@@ -985,31 +1017,43 @@ export class Path {
   }
 
   /**
-   * Flip the path horizontally (mirror across a vertical axis).
+   * Flip the path horizontally (mirror across its bounding box).
    *
-   * Each command’s x coordinate is remapped as (width - x).
+   * Each command’s x coordinate is remapped as `(boundsWidth - (x - bounds.minX)) + bounds.minX`,
+   * so the shape mirrors neatly inside its own bounds.
    * Control points are also flipped. Vertical-only commands (V) remain unchanged.
    *
    * @param width Optional width of the design space to flip within.
-   *              Defaults to this.width if not provided.
+   *              Defaults to the path’s bounding box width if not provided.
    * @returns The Path instance for chaining
    */
-  flipX(width: number = this.width): this {
-    return this.mapCoords((x, y) => ({ x: width - x, y }));
+  flipX(width?: number): this {
+    const bounds = this.getBounds();
+    const w = width ?? bounds.maxX - bounds.minX;
+    return this.mapCoords((x, y) => ({
+      x: bounds.minX + (w - (x - bounds.minX)),
+      y,
+    }));
   }
 
   /**
-   * Flip the path vertically (mirror across a horizontal axis).
+   * Flip the path vertically (mirror across its bounding box).
    *
-   * Each command’s y coordinate is remapped as (height - y).
+   * Each command’s y coordinate is remapped as `(boundsHeight - (y - bounds.minY)) + bounds.minY`,
+   * so the shape mirrors neatly inside its own bounds.
    * Control points are also flipped. Horizontal-only commands (H) remain unchanged.
    *
    * @param height Optional height of the design space to flip within.
-   *               Defaults to this.height if not provided.
+   *               Defaults to the path’s bounding box height if not provided.
    * @returns The Path instance for chaining
    */
-  flipY(height: number = this.height): this {
-    return this.mapCoords((x, y) => ({ x, y: height - y }));
+  flipY(height?: number): this {
+    const bounds = this.getBounds();
+    const h = height ?? bounds.maxY - bounds.minY;
+    return this.mapCoords((x, y) => ({
+      x,
+      y: bounds.minY + (h - (y - bounds.minY)),
+    }));
   }
 
   /**
@@ -1137,10 +1181,10 @@ export class Path {
     targetHeight: number = this._height,
     preserveAspect: boolean = true
   ): this {
-    const cmdBounds = this.getBounds();
+    const bounds = this.getBounds();
 
-    const shapeWidth = cmdBounds.maxX - cmdBounds.minX;
-    const shapeHeight = cmdBounds.maxY - cmdBounds.minY;
+    const shapeWidth = bounds.maxX - bounds.minX;
+    const shapeHeight = bounds.maxY - bounds.minY;
 
     if (shapeWidth === 0 || shapeHeight === 0) {
       return this; // nothing to fit
